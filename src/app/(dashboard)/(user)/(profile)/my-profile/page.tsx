@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { Phone, Mail, Calendar, Flame } from "lucide-react";
+import { Phone, Mail, Calendar, Flame, Gift, Loader2 } from "lucide-react";
 import { format, isValid } from "date-fns";
 import { useDispatch, useSelector } from "react-redux";
 import { RootState } from "@/redux/store";
@@ -23,6 +24,12 @@ export default function MyProfilePage() {
   const { profile, loading, error } = useSelector((state: RootState) => state.userProfile);
   const { user } = useSelector((state: RootState) => state.userAuth);
   const [retryCount, setRetryCount] = useState(0);
+  const [dailyReward, setDailyReward] = useState<{
+    eligible: boolean;
+    lastClaimDate: string | null;
+    rewardAmount: number;
+  } | null>(null);
+  const [dailyRewardLoading, setDailyRewardLoading] = useState(false);
 
   useEffect(() => {
     async function fetchProfile() {
@@ -66,6 +73,60 @@ export default function MyProfilePage() {
     }
     fetchProfile();
   }, [dispatch, user, router, retryCount]);
+
+  // Loads the reward status as soon as the authenticated user is known (page load),
+  // not just when the card is clicked.
+  const fetchRewardStatus = useCallback(async () => {
+    if (!user) return;
+    setDailyRewardLoading(true);
+    try {
+      const response = await fetch("/api/rewards/daily-login", {
+        headers: { "x-user-id": user._id },
+      });
+      if (!response.ok) throw new Error("Failed to fetch daily reward status");
+      const data = await response.json();
+      setDailyReward(data);
+    } catch (err) {
+      toast.error("Could not check daily reward status");
+    } finally {
+      setDailyRewardLoading(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    fetchRewardStatus();
+  }, [fetchRewardStatus]);
+
+  function handleDailyLoginBonusClick() {
+    if (!user) {
+      toast.error("Please log in to view your daily reward");
+      router.push("/user/login");
+      return;
+    }
+    fetchRewardStatus();
+  }
+
+  async function handleClaimDailyLoginBonus(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!user) {
+      toast.error("Please log in to claim your daily reward");
+      router.push("/user/login");
+      return;
+    }
+    setDailyRewardLoading(true);
+    try {
+      const response = await fetch("/api/rewards/daily-login/claim", {
+        method: "POST",
+        headers: { "x-user-id": user._id },
+      });
+      const data = await response.json();
+      toast[data.success ? "success" : "info"](data.message);
+    } catch (err) {
+      toast.error("Could not claim daily reward");
+    } finally {
+      await fetchRewardStatus();
+    }
+  }
 
   if (loading) return <ProfileSkeleton />;
   if (error) {
@@ -141,6 +202,36 @@ export default function MyProfilePage() {
             </div>
             <div className="text-2xl font-bold text-white">{profile?.dailyCheckin?.streak || 0}</div>
             <div className="text-sm text-slate-400">Day Streak</div>
+          </CardContent>
+        </Card>
+        <Card
+          className="bg-slate-900/50 backdrop-blur-xl border-white/10 transition-all duration-300 cursor-pointer hover:border-purple-500/50"
+          onClick={handleDailyLoginBonusClick}
+        >
+          <CardContent className="p-4 text-center">
+            <div className="flex items-center justify-center mb-2">
+              {dailyRewardLoading ? (
+                <Loader2 className="h-8 w-8 text-purple-400 animate-spin" />
+              ) : (
+                <Gift className="h-8 w-8 text-purple-400" />
+              )}
+            </div>
+            <div className="text-2xl font-bold text-white">
+              {dailyReward ? (dailyReward.eligible ? `+${dailyReward.rewardAmount}` : "Claimed") : 0}
+            </div>
+            <div className="text-sm text-slate-400">
+              {dailyReward && !dailyReward.eligible && dailyReward.lastClaimDate && isValid(new Date(dailyReward.lastClaimDate))
+                ? `Last claimed ${format(new Date(dailyReward.lastClaimDate), "MMM d, yyyy")}`
+                : "Daily Login Bonus"}
+            </div>
+            <Button
+              size="sm"
+              disabled={dailyRewardLoading}
+              onClick={handleClaimDailyLoginBonus}
+              className="mt-3 bg-white text-black hover:bg-gray-200"
+            >
+              Claim
+            </Button>
           </CardContent>
         </Card>
       </div>
