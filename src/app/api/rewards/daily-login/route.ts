@@ -6,6 +6,8 @@ import {
   todayISODate,
 } from "@/lib/rewards/daily-login-store";
 
+
+//daily login api added
 export async function GET(request: NextRequest) {
   try {
     const userId = getUserId(request);

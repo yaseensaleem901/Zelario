@@ -6,6 +6,8 @@ import {
   recordClaim,
 } from "@/lib/rewards/daily-login-store";
 
+
+//claim api added
 export async function POST(request: NextRequest) {
   try {
     const userId = getUserId(request);
